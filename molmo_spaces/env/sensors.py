@@ -1131,7 +1131,9 @@ def get_core_sensors(exp_config):
 
         # Camera parameter sensor
         cam_params = CameraParameterSensor(
-            camera_name=camera_name, uuid=f"sensor_param_{camera_name}"
+            camera_name=camera_name,
+            uuid=f"sensor_param_{camera_name}",
+            img_resolution=exp_config.camera_config.img_resolution,
         )
         sensors.append(cam_params)
 
@@ -1253,7 +1255,9 @@ def get_nav_task_sensors(exp_config):
 
         # Camera parameter sensor
         cam_params = CameraParameterSensor(
-            camera_name=camera_name, uuid=f"sensor_param_{camera_name}"
+            camera_name=camera_name,
+            uuid=f"sensor_param_{camera_name}",
+            img_resolution=exp_config.camera_config.img_resolution,
         )
         sensors.append(cam_params)
 
