@@ -200,8 +200,8 @@ class PiPolicyEvalConfig(JsonBenchmarkEvalConfig):
         self.robot_config.action_noise_config.enabled = False
         # TODO: DEBUG: REMOVE
         # Setting viewer to true so we can see the benchmark run
-        print(f"Setting the passive viewer to true")
-        self.use_passive_viewer = True
+        # print(f"Setting the passive viewer to true")
+        # self.use_passive_viewer = True
 
 
 class CAPPolicyEvalConfig(JsonBenchmarkEvalConfig):
@@ -329,5 +329,5 @@ class TiptopPolicyEvalConfig(JsonBenchmarkEvalConfig):
         self.robot_config.action_noise_config.enabled = False
         # TODO: DEBUG: REMOVE
         # Setting viewer to true so we can see the benchmark run
-        print(f"Setting the passive viewer to true")
-        self.use_passive_viewer = True
+        # print(f"Setting the passive viewer to true")
+        # self.use_passive_viewer = True
