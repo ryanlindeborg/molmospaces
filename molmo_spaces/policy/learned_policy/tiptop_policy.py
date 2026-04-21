@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import uuid
 from typing import Dict, Tuple
 
 import cv2
@@ -135,6 +136,7 @@ class Tiptop_Policy(InferencePolicy):
         self._pre_obs_buffer = None
         self._pre_obs_index = 0
         self._plan_exhausted = False
+        self._run_id = None
 
     def prepare_model(self):
         self.model_name = "tiptop"
@@ -312,6 +314,8 @@ class Tiptop_Policy(InferencePolicy):
             log.info("Pre-obs phase complete; sending observation-position camera data to Tiptop")
 
         if self.actions_buffer is None:
+            self._run_id = str(uuid.uuid4())
+            model_input["run_id"] = self._run_id
             result = self.model.infer(model_input)
             if not result["success"]:
                 log.warning(
@@ -373,4 +377,5 @@ class Tiptop_Policy(InferencePolicy):
         info["prompt"] = self.prompt_sampler.get_prompt(self.task)
         info["time_spent"] = time.time() - self.starting_time if self.starting_time else None
         info["timestamp"] = time.time()
+        info["run_id"] = self._run_id
         return info

@@ -9,6 +9,7 @@ Usage:
 """
 
 import argparse
+import concurrent.futures
 import glob
 import http.server
 import json
@@ -20,101 +21,101 @@ from pathlib import Path
 
 import h5py
 
+_DT_RE = re.compile(r"(\d{8}_\d{6})")
+
+
+def _process_h5_file(h5_path_str: str, base_dir: Path):
+    """Process one h5 file; returns (failures_list, total_episode_count)."""
+    h5_path = Path(h5_path_str)
+    house_dir = h5_path.parent
+    house_name = house_dir.name
+
+    run_dt_compact = None
+    run_dt_iso = None
+    for part in house_dir.parts:
+        m = _DT_RE.fullmatch(part)
+        if m:
+            run_dt_compact = m.group(1)
+            try:
+                run_dt_iso = datetime.strptime(run_dt_compact, "%Y%m%d_%H%M%S").strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            except ValueError:
+                pass
+            break
+
+    # Pre-scan all mp4s once per house instead of globbing per episode
+    all_mp4 = list(house_dir.glob("*.mp4"))
+
+    failures = []
+    with h5py.File(h5_path, "r") as f:
+        total = len(f.keys())
+        for traj_key in sorted(f.keys()):
+            traj_idx = int(traj_key.split("_")[1])
+            success_arr = f[traj_key]["success"][:]
+            if success_arr[-1]:
+                continue
+
+            scene_raw = f[traj_key]["obs_scene"][()]
+            if isinstance(scene_raw, bytes):
+                scene_raw = scene_raw.decode()
+            scene = json.loads(scene_raw)
+
+            ep_prefix = f"episode_{traj_idx:08d}_"
+            wrist_videos = sorted(
+                v for v in all_mp4 if v.name.startswith(ep_prefix + "wrist_camera_batch_")
+            )
+            if not wrist_videos:
+                continue
+            exo_videos = sorted(
+                v
+                for v in all_mp4
+                if v.name.startswith(ep_prefix + "exo_camera_") and "depth" not in v.name
+            )
+
+            failures.append(
+                {
+                    "house": house_name,
+                    "traj_key": traj_key,
+                    "output_folder": str(house_dir),
+                    "run_dt_compact": run_dt_compact or "",
+                    "run_dt_iso": run_dt_iso or "",
+                    "run_id": scene.get("run_id") or run_dt_compact or "N/A",
+                    "task_description": scene.get("task_description", "N/A"),
+                    "task_type": scene.get("task_type", "unknown"),
+                    "object_name": scene.get("object_name", "N/A"),
+                    "policy": scene.get("policy_name", "N/A"),
+                    "time_spent": round(scene.get("time_spent", 0), 1),
+                    "num_steps": len(success_arr),
+                    "wrist_video": str(wrist_videos[0].relative_to(base_dir)),
+                    "exo_video": str(exo_videos[0].relative_to(base_dir))
+                    if exo_videos
+                    else None,
+                }
+            )
+
+    return failures, total
+
 
 def scan_failures(base_dir: Path):
-    failures = []
     h5_files = sorted(glob.glob(str(base_dir / "house_*" / "trajectories*.h5")))
 
-    _dt_re = re.compile(r"(\d{8}_\d{6})")
+    all_failures = []
+    total_episodes = 0
 
-    for h5_path in h5_files:
-        house_dir = Path(h5_path).parent
-        house_name = house_dir.name
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        futs = {pool.submit(_process_h5_file, p, base_dir): p for p in h5_files}
+        for fut in concurrent.futures.as_completed(futs):
+            failures, count = fut.result()
+            all_failures.extend(failures)
+            total_episodes += count
 
-        # Extract run datetime from path (e.g. "20260410_150954")
-        run_dt_compact = None
-        run_dt_iso = None
-        for part in house_dir.parts:
-            m = _dt_re.fullmatch(part)
-            if m:
-                run_dt_compact = m.group(1)
-                try:
-                    run_dt_iso = datetime.strptime(run_dt_compact, "%Y%m%d_%H%M%S").strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                except ValueError:
-                    pass
-                break
-
-        with h5py.File(h5_path, "r") as f:
-            for traj_key in sorted(f.keys()):
-                traj_idx = int(traj_key.split("_")[1])
-                success_arr = f[traj_key]["success"][:]
-                if success_arr[-1]:
-                    continue
-
-                scene_raw = f[traj_key]["obs_scene"][()]
-                if isinstance(scene_raw, bytes):
-                    scene_raw = scene_raw.decode()
-                scene = json.loads(scene_raw)
-
-                task_desc = scene.get("task_description", "N/A")
-                prompt = scene.get("prompt", task_desc)
-                task_type = scene.get("task_type", "unknown")
-                obj_name = scene.get("object_name", "N/A")
-                policy = scene.get("policy_name", "N/A")
-                time_spent = scene.get("time_spent", 0)
-                num_steps = len(success_arr)
-
-                ep_prefix = f"episode_{traj_idx:08d}"
-                wrist_videos = sorted(
-                    house_dir.glob(f"{ep_prefix}_wrist_camera_batch_*.mp4")
-                )
-                exo_videos = [
-                    v
-                    for v in sorted(
-                        house_dir.glob(f"{ep_prefix}_exo_camera_*_batch_*.mp4")
-                    )
-                    if "depth" not in v.name
-                ]
-
-                if not wrist_videos:
-                    continue
-
-                failures.append(
-                    {
-                        "house": house_name,
-                        "traj_key": traj_key,
-                        "output_folder": str(house_dir),
-                        "run_dt_compact": run_dt_compact or "",
-                        "run_dt_iso": run_dt_iso or "",
-                        "task_description": task_desc,
-                        "prompt": prompt,
-                        "task_type": task_type,
-                        "object_name": obj_name,
-                        "policy": policy,
-                        "time_spent": round(time_spent, 1),
-                        "num_steps": num_steps,
-                        "wrist_video": str(wrist_videos[0].relative_to(base_dir)),
-                        "exo_video": str(exo_videos[0].relative_to(base_dir))
-                        if exo_videos
-                        else None,
-                    }
-                )
-
-    return failures
+    # Re-sort by house name + traj key to keep stable order across parallel results
+    all_failures.sort(key=lambda f: (f["house"], f["traj_key"]))
+    return all_failures, total_episodes
 
 
-def count_total_episodes(base_dir: Path) -> int:
-    total = 0
-    for h5_path in glob.glob(str(base_dir / "house_*" / "trajectories*.h5")):
-        with h5py.File(h5_path, "r") as f:
-            total += len(f.keys())
-    return total
-
-
-def build_html(failures, base_dir: Path, plan_step_threshold: int) -> str:
-    total_episodes = count_total_episodes(base_dir)
+def build_html(failures, total_episodes: int, base_dir: Path, plan_step_threshold: int) -> str:
     plan_fails = sum(1 for f in failures if f["num_steps"] <= plan_step_threshold)
     exec_fails = len(failures) - plan_fails
     success_rate = (
@@ -128,7 +129,10 @@ def build_html(failures, base_dir: Path, plan_step_threshold: int) -> str:
     subtitle = "/".join(parts[-2:]) if len(parts) >= 2 else base_dir.name
 
     cards_html = ""
+    run_path_prefix = "/home/ryanlindeborg/projects/ml/robotics/my_forks/tiptop/tiptop/tiptop_server_outputs/"
     for fail in failures:
+        run_path = run_path_prefix + fail["run_id"] if fail["run_id"] != "N/A" else "N/A"
+        fail["run_path"] = run_path
         exo_section = ""
         if fail["exo_video"]:
             exo_section = f"""
@@ -156,12 +160,12 @@ def build_html(failures, base_dir: Path, plan_step_threshold: int) -> str:
                 <span class="traj-badge">{fail['traj_key']}</span>
                 <span class="type-badge">{fail['task_type']}</span>
                 {category_badge}
-                <span class="header-preview">{fail['prompt']}</span>
+                <span class="header-preview">{fail['task_description']}</span>
                 <span class="header-steps">{fail['num_steps']} steps</span>
             </div>
             <div class="card-body">
                 <div class="instruction">
-                    <span class="label">Instruction:</span> {fail['prompt']}
+                    <span class="label">Instruction:</span> {fail['task_description']}
                 </div>
                 <div class="meta-row">
                     <div class="meta-item"><span class="label">Object:</span> {fail['object_name']}</div>
@@ -170,6 +174,8 @@ def build_html(failures, base_dir: Path, plan_step_threshold: int) -> str:
                     <div class="meta-item"><span class="label">Time:</span> {fail['time_spent']}s</div>
                 </div>
                 <div class="meta-row">
+                    <div class="meta-item"><span class="label">Run ID:</span> <code class="run-id">{fail['run_id']}</code><button class="copy-btn" onclick="copyText(this, '{fail['run_id']}')" title="Copy run ID">Copy</button></div>
+                    <div class="meta-item"><span class="label">Run Path:</span> <code class="run-id">{fail['run_path']}</code><button class="copy-btn" onclick="copyText(this, '{fail['run_path']}')" title="Copy run path">Copy</button></div>
                     <div class="meta-item"><span class="label">Run Time:</span> {fail['run_dt_iso'] or 'N/A'}<span class="hidden-search">{fail['run_dt_compact']}</span></div>
                     <div class="meta-item output-folder"><span class="label">Output Folder:</span> <code>{fail['output_folder']}</code></div>
                 </div>
@@ -234,13 +240,17 @@ def build_html(failures, base_dir: Path, plan_step_threshold: int) -> str:
     .meta-item {{ font-size: 13px; color: #8b949e; }}
     .meta-item .label {{ font-weight: 600; color: #c9d1d9; }}
     .hidden-search {{ display: none; }}
-    .output-folder code {{ font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; background: #0d1117; padding: 2px 6px; border-radius: 4px; color: #79c0ff; word-break: break-all; }}
+    .output-folder code {{ font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; background: #0d1117; padding: 2px 6px; border-radius: 4px; color: #79c0ff; `wor`d-break: break-all; }}
     .videos {{ display: flex; gap: 16px; flex-wrap: wrap; }}
     .video-container {{ flex: 1; min-width: 280px; }}
     .video-label {{ display: block; font-size: 12px; font-weight: 600; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
     video {{ width: 100%; border-radius: 8px; background: #0d1117; }}
     .empty {{ text-align: center; padding: 60px 20px; color: #484f58; font-size: 16px; }}
     .count-display {{ color: #8b949e; font-size: 14px; margin-left: auto; }}
+    code.run-id {{ font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; background: #0d1117; padding: 2px 6px; border-radius: 4px; color: #79c0ff; }}
+    .copy-btn {{ margin-left: 6px; background: #21262d; border: 1px solid #30363d; border-radius: 4px; padding: 2px 8px; color: #c9d1d9; cursor: pointer; font-size: 11px; }}
+    .copy-btn:hover {{ background: #30363d; }}
+    .copy-btn.copied {{ background: #1a4d2e; border-color: #3fb950; color: #3fb950; }}
 </style>
 </head>
 <body>
@@ -320,6 +330,15 @@ function playAll() {{
 
 function pauseAll() {{ document.querySelectorAll('video').forEach(v => v.pause()); }}
 
+function copyText(btn, text) {{
+    navigator.clipboard.writeText(text).then(() => {{
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {{ btn.textContent = original; btn.classList.remove('copied'); }}, 1200);
+    }});
+}}
+
 filterCards();
 </script>
 </body>
@@ -376,9 +395,9 @@ def main():
         raise SystemExit(f"No house_* subdirectories found in: {base_dir}")
 
     print(f"Scanning {base_dir} for failures...")
-    failures = scan_failures(base_dir)
+    failures, total_episodes = scan_failures(base_dir)
     print(f"Found {len(failures)} failed episodes.")
-    html = build_html(failures, base_dir, args.plan_step_threshold)
+    html = build_html(failures, total_episodes, base_dir, args.plan_step_threshold)
 
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", args.port), make_handler(base_dir, html)) as httpd:
