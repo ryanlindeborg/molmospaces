@@ -698,11 +698,14 @@ class RobotView(ABC):
 
     def get_gripper_movegroup_ids(self) -> list[str]:
         """Get the IDs of all gripper move groups in this robot."""
-        return [
+        if hasattr(self, "_gripper_movegroup_ids_cache"):
+            return self._gripper_movegroup_ids_cache
+        self._gripper_movegroup_ids_cache = [
             mg_id
             for mg_id in self.move_group_ids()
             if isinstance(self._move_groups[mg_id], GripperGroup)
         ]
+        return self._gripper_movegroup_ids_cache
 
     def get_jacobian(self, move_group_id: str, input_move_group_ids: list[str]) -> np.ndarray:
         """Calculate the Jacobian of a move group with respect to specific input move groups.
