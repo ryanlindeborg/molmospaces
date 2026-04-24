@@ -696,7 +696,6 @@ class RobotView(ABC):
             move_group_ids = self.move_group_ids()
         return {mg_id: self._move_groups[mg_id].noop_ctrl for mg_id in move_group_ids}
 
-    @cache
     def get_gripper_movegroup_ids(self) -> list[str]:
         """Get the IDs of all gripper move groups in this robot."""
         return [
