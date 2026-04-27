@@ -62,16 +62,11 @@ def _process_h5_file(h5_path_str: str, base_dir: Path):
             scene = json.loads(scene_raw)
 
             ep_prefix = f"episode_{traj_idx:08d}_"
-            wrist_videos = sorted(
-                v for v in all_mp4 if v.name.startswith(ep_prefix + "wrist_camera_batch_")
-            )
-            if not wrist_videos:
-                continue
-            exo_videos = sorted(
-                v
-                for v in all_mp4
-                if v.name.startswith(ep_prefix + "exo_camera_") and "depth" not in v.name
-            )
+            ep_videos = [
+                v for v in all_mp4 if v.name.startswith(ep_prefix) and "depth" not in v.name
+            ]
+            wrist_videos = sorted(v for v in ep_videos if "wrist" in v.name)
+            exo_videos = sorted(v for v in ep_videos if "wrist" not in v.name)
 
             failures.append(
                 {
@@ -87,7 +82,9 @@ def _process_h5_file(h5_path_str: str, base_dir: Path):
                     "policy": scene.get("policy_name", "N/A"),
                     "time_spent": round(scene.get("time_spent", 0), 1),
                     "num_steps": len(success_arr),
-                    "wrist_video": str(wrist_videos[0].relative_to(base_dir)),
+                    "wrist_video": str(wrist_videos[0].relative_to(base_dir))
+                    if wrist_videos
+                    else None,
                     "exo_video": str(exo_videos[0].relative_to(base_dir))
                     if exo_videos
                     else None,
@@ -133,6 +130,15 @@ def build_html(failures, total_episodes: int, base_dir: Path, plan_step_threshol
     for fail in failures:
         run_path = run_path_prefix + fail["run_id"] if fail["run_id"] != "N/A" else "N/A"
         fail["run_path"] = run_path
+        wrist_section = ""
+        if fail["wrist_video"]:
+            wrist_section = f"""
+                <div class="video-container">
+                    <span class="video-label">Wrist Camera</span>
+                    <video controls preload="metadata">
+                        <source src="/{fail['wrist_video']}" type="video/mp4">
+                    </video>
+                </div>"""
         exo_section = ""
         if fail["exo_video"]:
             exo_section = f"""
@@ -180,12 +186,7 @@ def build_html(failures, total_episodes: int, base_dir: Path, plan_step_threshol
                     <div class="meta-item output-folder"><span class="label">Output Folder:</span> <code>{fail['output_folder']}</code></div>
                 </div>
                 <div class="videos">
-                    <div class="video-container">
-                        <span class="video-label">Wrist Camera</span>
-                        <video controls preload="metadata">
-                            <source src="/{fail['wrist_video']}" type="video/mp4">
-                        </video>
-                    </div>
+                    {wrist_section}
                     {exo_section}
                 </div>
             </div>

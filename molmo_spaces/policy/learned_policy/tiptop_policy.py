@@ -24,7 +24,7 @@ PING_TIMEOUT_SECS = 600
 class TiptopWebsocketClient:
     """Websocket client that adds endpoint field for a Tiptop server."""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8765) -> None:
+    def __init__(self, host: str = "localhost", port: int = 8765) -> None:
         self._uri = f"ws://{host}:{port}"
         self._packer = msgpack_numpy.Packer()
         self._ws, self._server_metadata = self._wait_for_server()

@@ -580,10 +580,11 @@ def run_evaluation(
     else:
         config_name = eval_config_cls.__name__
 
+    output_subdir = os.environ.get("WANDB_RUN_NAME") or timestamp
     if output_dir is not None:
-        resolved_output_dir = Path(output_dir) / config_name / timestamp
+        resolved_output_dir = Path(output_dir) / config_name / output_subdir
     else:
-        resolved_output_dir = Path("eval_output") / config_name / timestamp
+        resolved_output_dir = Path("eval_output") / config_name / output_subdir
     os.makedirs(resolved_output_dir, exist_ok=True)
 
     # Determine task horizon
@@ -622,8 +623,25 @@ def run_evaluation(
 
     # Override policy camera names if requested
     if camera_names_override is not None:
-        log.info(f"Overriding policy_config.camera_names: {camera_names_override}")
-        exp_config.policy_config.camera_names = camera_names_override
+        policy_cfg_cls = type(exp_config.policy_config)
+        if "camera_names" in policy_cfg_cls.model_fields:
+            log.info(f"Overriding policy_config.camera_names: {camera_names_override}")
+            exp_config.policy_config.camera_names = camera_names_override
+        elif policy_cfg_cls.__name__ == "TiptopPolicyConfig":
+            if "wrist_camera_zed_mini" not in camera_names_override:
+                raise ValueError(
+                    f"Tiptop requires 'wrist_camera_zed_mini' in --camera_names; got {camera_names_override}."
+                )
+            log.warning(
+                f"--camera_names {camera_names_override} not applied to policy config: "
+                "Tiptop uses the wrist camera only (selected internally from obs)."
+            )
+        else:
+            log.warning(
+                f"--camera_names {camera_names_override} ignored: "
+                f"{policy_cfg_cls.__name__} does not declare a camera_names field "
+                "(this policy selects cameras internally)."
+            )
 
     # Patch config with evaluation-specific runtime parameters
     exp_config = JsonEvalRunner.patch_config(
@@ -652,7 +670,7 @@ def run_evaluation(
         else:
             ckpt_name = "no_ckpt"
 
-        wandb_run_name = f"{ckpt_name}_{timestamp}"
+        wandb_run_name = os.environ.get("WANDB_RUN_NAME") or f"{ckpt_name}_{timestamp}"
         wandb.init(project=wandb_project, name=wandb_run_name)
         wandb.config.update(
             {
