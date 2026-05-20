@@ -12,6 +12,7 @@ import msgpack_numpy
 from molmo_spaces.configs.abstract_exp_config import MlSpacesExpConfig
 from molmo_spaces.policy.base_policy import InferencePolicy
 from molmo_spaces.policy.learned_policy.utils import PromptSampler
+from molmo_spaces.utils.pose import pos_quat_to_pose_mat
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -179,6 +180,7 @@ class Tiptop_Policy(InferencePolicy):
     #   - {camera_name}_depth: float32 (H, W) depth in meters
     #   - sensor_param_{camera_name}: dict with "intrinsic_cv" (3,3) and "cam2world_gl" (4,4)
     #   - qpos["arm"]: 7 joint positions
+    #   - fr3_link0_pose: 7D (x,y,z,qw,qx,qy,qz) FR3 arm root pose in sim world frame
     def obs_to_model_input(self, obs):
         if isinstance(obs, list):
             obs = obs[0]
@@ -187,7 +189,13 @@ class Tiptop_Policy(InferencePolicy):
         wrist_camera_key = "wrist_camera_zed_mini" if "wrist_camera_zed_mini" in obs else "wrist_camera"
         camera_params = obs[f"sensor_param_{wrist_camera_key}"]
 
-        # Collect all available cameras from sensor_param_* keys
+        # Tiptop's planning frame is the robot base (in its real-robot setup, "world" IS
+        # the robot base). MolmoSpaces places the robot at sim-world poses, so
+        # transform every camera pose into the base frame here. The wire key stays
+        # `world_from_cam` to match tiptop's API, but the value is base_from_cam.
+        world_from_base = pos_quat_to_pose_mat(np.asarray(obs["fr3_link0_pose"], dtype=np.float32))
+        base_from_world = np.linalg.inv(world_from_base).astype(np.float32)
+
         cameras = {}
         for key in obs:
             if not key.startswith("sensor_param_"):
@@ -196,25 +204,27 @@ class Tiptop_Policy(InferencePolicy):
             if cam_name not in obs:
                 continue
             cam_params = obs[key]
+            base_from_cam = base_from_world @ np.asarray(cam_params["cam2world_gl"], dtype=np.float32)
             cam_data = {
                 "rgb": np.array(obs[cam_name], dtype=np.uint8),
                 "intrinsics": np.array(cam_params["intrinsic_cv"], dtype=np.float32),
-                "world_from_cam": np.array(cam_params["cam2world_gl"], dtype=np.float32),
+                "world_from_cam": base_from_cam,
             }
             depth_key = f"{cam_name}_depth"
             if depth_key in obs:
                 cam_data["depth"] = np.array(obs[depth_key], dtype=np.float32)
             cameras[cam_name] = cam_data
 
+        wrist_base_from_cam = base_from_world @ np.asarray(camera_params["cam2world_gl"], dtype=np.float32)
+
         model_input = {
             "rgb": np.array(obs[wrist_camera_key], dtype=np.uint8),
             "depth": np.array(obs[f"{wrist_camera_key}_depth"], dtype=np.float32),
             "intrinsics": np.array(camera_params["intrinsic_cv"], dtype=np.float32),
-            "world_from_cam": np.array(camera_params["cam2world_gl"], dtype=np.float32),
+            "world_from_cam": wrist_base_from_cam,
             "cameras": cameras,
             "task": prompt,
             "q_init": np.array(obs["qpos"]["arm"][:7], dtype=np.float32),
-            "fr3_link0_pose": np.array(obs["fr3_link0_pose"], dtype=np.float32),
         }
         return model_input
 
