@@ -108,9 +108,8 @@ class Tiptop_Policy(InferencePolicy):
     def __init__(
         self,
         exp_config: MlSpacesExpConfig,
-        task_type: str,
     ) -> None:
-        super().__init__(exp_config, exp_config.task_type)
+        super().__init__(exp_config)
         self.remote_config = exp_config.policy_config.remote_config
         self.prompt_sampler = PromptSampler(
             task_type=exp_config.task_type,
