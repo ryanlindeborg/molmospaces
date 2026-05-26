@@ -314,7 +314,7 @@ class TiptopPolicyEvalConfig(JsonBenchmarkEvalConfig):
         cam_obs_qpos=[0.0, -1.0, 0.0, -1.0, 0.0, 1.0, -3.0],
         cam_obs_n_steps=50,
     )
-    policy_dt_ms: float = 66.0
+    policy_dt_ms: float = 20.0
 
     def model_post_init(self, __context):
         super().model_post_init(__context)
