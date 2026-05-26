@@ -12,7 +12,6 @@ import msgpack_numpy
 from molmo_spaces.configs.abstract_exp_config import MlSpacesExpConfig
 from molmo_spaces.policy.base_policy import InferencePolicy
 from molmo_spaces.policy.learned_policy.utils import PromptSampler
-from molmo_spaces.utils.pose import pos_quat_to_pose_mat
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -179,7 +178,6 @@ class Tiptop_Policy(InferencePolicy):
     #   - {camera_name}_depth: float32 (H, W) depth in meters
     #   - sensor_param_{camera_name}: dict with "intrinsic_cv" (3,3) and "cam2world_gl" (4,4)
     #   - qpos["arm"]: 7 joint positions
-    #   - fr3_link0_pose: 7D (x,y,z,qw,qx,qy,qz) FR3 arm root pose in sim world frame
     def obs_to_model_input(self, obs):
         if isinstance(obs, list):
             obs = obs[0]
@@ -191,7 +189,7 @@ class Tiptop_Policy(InferencePolicy):
         # TiPToP's planning frame is the robot base link frame. The world coordinate frame differs from the
         # robot base link frame, so we need to compute the transformation matrix from the camera to
         # the robot base link frame.
-        world_from_base = pos_quat_to_pose_mat(np.asarray(obs["fr3_link0_pose"], dtype=np.float32))
+        world_from_base = self.task.env.current_robot.robot_view.get_move_group("arm").root_frame_to_world
         base_from_world = np.linalg.inv(world_from_base).astype(np.float32)
 
         cameras = {}

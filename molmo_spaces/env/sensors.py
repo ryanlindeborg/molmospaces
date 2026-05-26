@@ -3,7 +3,7 @@ import logging
 import gymnasium.spaces as gyms
 import numpy as np
 
-from molmo_spaces.configs.robot_configs import FrankaRobotConfig, RBY1Config
+from molmo_spaces.configs.robot_configs import RBY1Config
 from molmo_spaces.controllers.abstract import AbstractPositionController
 from molmo_spaces.env.abstract_sensors import Sensor
 from molmo_spaces.env.data_views import create_mlspaces_body
@@ -1147,10 +1147,6 @@ def get_core_sensors(exp_config):
     sensors.append(RobotJointVelocitySensor(uuid="qvel", max_joints=9))
     sensors.append(TCPPoseSensor(uuid="tcp_pose"))
     sensors.append(RobotBasePoseSensor(uuid="robot_base_pose"))
-    if isinstance(exp_config.robot_config, FrankaRobotConfig):
-        from molmo_spaces.env.franka_sensors import Fr3Link0PoseSensor
-
-        sensors.append(Fr3Link0PoseSensor(uuid="fr3_link0_pose"))
 
     # Environment state sensors
     sensors.append(EnvStateSensor(uuid="env_states"))
