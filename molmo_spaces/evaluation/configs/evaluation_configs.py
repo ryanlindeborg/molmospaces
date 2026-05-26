@@ -305,12 +305,8 @@ class DreamZeroPolicyEvalConfig(JsonBenchmarkEvalConfig):
 class TiptopPolicyEvalConfig(JsonBenchmarkEvalConfig):
     robot_config: FrankaTiptopRobotConfig = FrankaTiptopRobotConfig()
     policy_config: TiptopPolicyConfig = TiptopPolicyConfig(
-        # Raise wrist camera as high as possible while pointing it down at the scene.
-        # The arm takes an "overhead bent" shape: shoulder pushed forward/up (q2),
-        # elbow folded back heavily (q4 near its -3.04 limit) so the forearm curves
-        # back over and down, and wrist (q6) adjusted to aim the camera at the workspace.
-        # Joint limits: q4 ∈ [-3.04, -0.15], q6 ∈ [0.54, 4.52].
-        # Tune these values if the camera view needs adjustment.
+        # This is the pose that the arm will move to at the beginning of the trajectory,
+        # so that the wrist camera has a clear view of the scene.
         cam_obs_qpos=[0.0, -1.0, 0.0, -1.0, 0.0, 1.0, -3.0],
         cam_obs_n_steps=200,
     )

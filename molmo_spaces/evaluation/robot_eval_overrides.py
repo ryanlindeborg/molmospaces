@@ -49,8 +49,13 @@ def tiptop_robot_eval_override(
     camera_config: CameraSystemConfig,
 ) -> None:
     log.info("Applying TiPToP robot evaluation overrides")
+
+    wrist_cam = camera_config.cameras[0]
+    if "wrist" not in wrist_cam.name:
+        raise ValueError(f"TiPToP assumes the depth data is from the wrist camera, but depth data here is being enabled on '{camera_config.cameras[0].name}'.")
+
     # TiPToP needs depth info
-    camera_config.cameras[0].record_depth = True
+    wrist_cam.record_depth = True
 
 
 ROBOT_OVERRIDE_REGISTRY: dict[str, OverrideFn] = {

@@ -12,7 +12,6 @@ from molmo_spaces.configs.abstract_exp_config import MlSpacesExpConfig
 from molmo_spaces.policy.base_policy import InferencePolicy
 
 log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 PING_INTERVAL_SECS = 60
 PING_TIMEOUT_SECS = 600
@@ -104,7 +103,7 @@ class TiptopWebsocketClient:
         return self._server_metadata
 
 
-class Tiptop_Policy(InferencePolicy):
+class TiptopPolicy(InferencePolicy):
     def __init__(
         self,
         exp_config: MlSpacesExpConfig,
@@ -116,6 +115,7 @@ class Tiptop_Policy(InferencePolicy):
         self.cam_obs_qpos = exp_config.policy_config.cam_obs_qpos
         self.cam_obs_n_steps = exp_config.policy_config.cam_obs_n_steps
         self.model = None  # don't init model till inference to allow multiprocessing
+        self.reset()
 
     def reset(self):
         self.actions_buffer = None
@@ -127,14 +127,12 @@ class Tiptop_Policy(InferencePolicy):
         self._plan_exhausted = False
 
     def prepare_model(self):
-        assert self.remote_config is not None, "TiPToP policy only supports remote model inference"
-        self._prepare_remote_model()
+        if not self.remote_config:
+            raise ValueError("TiPToP policy only supports remote model inference")
+        host = self.remote_config["host"]
+        port = self.remote_config["port"]
+        max_retries = self.remote_config["max_retries"]
 
-    def _prepare_remote_model(self):
-        host = self.remote_config.get("host", "localhost")
-        port = self.remote_config.get("port", 8765)
-
-        max_retries = 5
         for attempt in range(max_retries):
             try:
                 self.model = TiptopWebsocketClient(
@@ -160,14 +158,18 @@ class Tiptop_Policy(InferencePolicy):
         cv2.imshow("views", cv2.cvtColor(views, cv2.COLOR_RGB2BGR))
         cv2.waitKey(1)
 
-    # Input obs is a dict of size 30 containing:
-    #   - wrist_camera / wrist_camera_zed_mini: uint8 (H, W, 3) RGB image
-    #   - {camera_name}_depth: float32 (H, W) depth in meters
-    #   - sensor_param_{camera_name}: dict with "intrinsic_cv" (3,3) and "cam2world_gl" (4,4)
-    #   - qpos["arm"]: 7 joint positions
     def obs_to_model_input(self, obs):
-        if isinstance(obs, list):
-            obs = obs[0]
+        """
+        Args:
+            obs: a single-element list whose element is
+                a dict containing:
+                - wrist_camera / wrist_camera_zed_mini: uint8 (H, W, 3) RGB image
+                - {camera_name}_depth: float32 (H, W) depth in meters
+                - sensor_param_{camera_name}: dict with "intrinsic_cv" (3, 3) and
+                  "cam2world_gl" (4, 4)
+                - qpos["arm"]: 7 joint positions
+        """
+        obs = obs[0]
 
         wrist_camera_key = (
             "wrist_camera_zed_mini" if "wrist_camera_zed_mini" in obs else "wrist_camera"

@@ -125,7 +125,7 @@ class BimanualYamPiPolicyConfig(BasePolicyConfig):
 
 
 class TiptopPolicyConfig(BasePolicyConfig):
-    remote_config: dict = dict(host="localhost", port=8765)
+    remote_config: dict = dict(host="localhost", port=8765, max_retries=5)
     grasping_type: str = "binary"
     grasping_threshold: float = 0.5
     # Arm moves here before the image capture that is sent to TiPToP server.
@@ -141,6 +141,6 @@ class TiptopPolicyConfig(BasePolicyConfig):
         """Set policy_cls after initialization to avoid circular imports."""
         super().model_post_init(__context)
         if self.policy_cls is None:
-            from molmo_spaces.policy.learned_policy.tiptop_policy import Tiptop_Policy
+            from molmo_spaces.policy.learned_policy.tiptop_policy import TiptopPolicy
 
-            self.policy_cls = Tiptop_Policy
+            self.policy_cls = TiptopPolicy
