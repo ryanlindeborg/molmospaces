@@ -54,7 +54,9 @@ class TiptopWebsocketClient:
     def _reconnect(self) -> None:
         retry_delay = 2
         while True:
-            logging.warning(f"WebSocket connection closed. Reconnecting to {self._connected_uri}...")
+            logging.warning(
+                f"WebSocket connection closed. Reconnecting to {self._connected_uri}..."
+            )
             try:
                 self._ws, self._server_metadata = self._connect_once(self._connected_uri)
                 logging.info("Reconnected to server.")
@@ -76,6 +78,7 @@ class TiptopWebsocketClient:
             response = self._ws.recv()
         if isinstance(response, str):
             import json
+
             try:
                 return json.loads(response)
             except json.JSONDecodeError:
@@ -150,7 +153,9 @@ class Tiptop_Policy(InferencePolicy):
 
     def render(self, obs):
         # TiPToP uses just the wrist camera
-        wrist_camera_key = "wrist_camera_zed_mini" if "wrist_camera_zed_mini" in obs else "wrist_camera"
+        wrist_camera_key = (
+            "wrist_camera_zed_mini" if "wrist_camera_zed_mini" in obs else "wrist_camera"
+        )
         views = obs[wrist_camera_key]
         cv2.imshow("views", cv2.cvtColor(views, cv2.COLOR_RGB2BGR))
         cv2.waitKey(1)
@@ -164,18 +169,24 @@ class Tiptop_Policy(InferencePolicy):
         if isinstance(obs, list):
             obs = obs[0]
 
-        wrist_camera_key = "wrist_camera_zed_mini" if "wrist_camera_zed_mini" in obs else "wrist_camera"
+        wrist_camera_key = (
+            "wrist_camera_zed_mini" if "wrist_camera_zed_mini" in obs else "wrist_camera"
+        )
         camera_params = obs[f"sensor_param_{wrist_camera_key}"]
 
         # TiPToP's planning frame is the robot base link frame. The world coordinate frame differs from the
         # robot base link frame, so we need to compute the transformation matrix from the camera to
         # the robot base link frame.
-        world_from_base = self.task.env.current_robot.robot_view.get_move_group("arm").root_frame_to_world
+        world_from_base = self.task.env.current_robot.robot_view.get_move_group(
+            "arm"
+        ).root_frame_to_world
         base_from_world = np.linalg.inv(world_from_base).astype(np.float32)
 
         # TiPToP only uses the wrist camera. The TiPToP API contract (world_from_cam) assumes we are passing
         # in the transformation matrix from the camera to the robot base link frame.
-        wrist_base_from_cam = base_from_world @ np.asarray(camera_params["cam2world_gl"], dtype=np.float32)
+        wrist_base_from_cam = base_from_world @ np.asarray(
+            camera_params["cam2world_gl"], dtype=np.float32
+        )
 
         model_input = {
             "rgb": np.array(obs[wrist_camera_key], dtype=np.uint8),
@@ -236,10 +247,12 @@ class Tiptop_Policy(InferencePolicy):
                 q_target = np.array(self.cam_obs_qpos, dtype=np.float32)
                 n = self.cam_obs_n_steps
                 self._pre_obs_buffer = [
-                    np.concatenate([
-                        q_current + (q_target - q_current) * (i + 1) / n,
-                        [0.0],  # gripper open throughout
-                    ])
+                    np.concatenate(
+                        [
+                            q_current + (q_target - q_current) * (i + 1) / n,
+                            [0.0],  # gripper open throughout
+                        ]
+                    )
                     for i in range(n)
                 ]
                 self._pre_obs_index = 0

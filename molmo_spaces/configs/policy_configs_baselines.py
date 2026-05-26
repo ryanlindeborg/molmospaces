@@ -123,6 +123,7 @@ class BimanualYamPiPolicyConfig(BasePolicyConfig):
 
             self.policy_cls = BimanualYamPiPolicy
 
+
 class TiptopPolicyConfig(BasePolicyConfig):
     remote_config: dict = dict(host="localhost", port=8765)
     grasping_type: str = "binary"

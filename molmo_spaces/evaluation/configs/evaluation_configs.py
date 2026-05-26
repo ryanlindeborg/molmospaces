@@ -43,7 +43,7 @@ from molmo_spaces.configs.robot_configs import (
     ActionNoiseConfig,
     FrankaCAPRobotConfig,
     FrankaRobotConfig,
-    FrankaTiptopRobotConfig
+    FrankaTiptopRobotConfig,
 )
 from molmo_spaces.configs.task_configs import (
     BaseMujocoTaskConfig,

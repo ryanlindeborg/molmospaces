@@ -258,7 +258,7 @@ class JsonEvalTaskSampler(BaseMujocoTaskSampler):
 
         # Apply robot-specific evaluation overrides (e.g. enable depth) after the camera
         # config is populated from the episode spec, but before super().__init__() builds sensors.
-        robot_override = getattr(exp_config, '_robot_eval_override', None)
+        robot_override = getattr(exp_config, "_robot_eval_override", None)
         if robot_override is not None:
             robot_override(episode_spec, exp_config.camera_config)
 
