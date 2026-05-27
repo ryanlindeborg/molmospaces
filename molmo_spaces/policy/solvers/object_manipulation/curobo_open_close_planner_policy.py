@@ -24,7 +24,7 @@ from molmo_spaces.utils.constants.object_constants import (
     EXTENDED_ARTICULATION_TYPES_THOR,
     RECEPTACLE_TYPES_THOR,
 )
-from molmo_spaces.utils.grasp_sample import get_all_grasp_poses
+from molmo_spaces.utils.grasps import get_joint_grasps
 from molmo_spaces.utils.mj_model_and_data_utils import body_aabb, descendant_geoms, geom_aabb
 from molmo_spaces.utils.pose import pose_mat_to_7d
 from molmo_spaces.utils.profiler_utils import Timer
@@ -348,7 +348,12 @@ class CuroboOpenClosePlannerPolicy(CuroboPlannerPolicy, OpenClosePlannerPolicy):
         data = self.task.env.current_data
 
         # Get all grasp poses
-        grasp_poses_world, _, object_pose = get_all_grasp_poses(self, pickup_obj)
+        grasp_poses_world, object_pose = get_joint_grasps(
+            self.task.env,
+            pickup_obj,
+            self.config.task_config.joint_index,
+            grasp_libraries=self.config.policy_config.grasp_libraries,
+        )
 
         # Get current TCP position
         tcp_pose_arr = self.task.sensor_suite.sensors["tcp_pose"].get_observation(
@@ -568,7 +573,7 @@ class CuroboOpenClosePlannerPolicy(CuroboPlannerPolicy, OpenClosePlannerPolicy):
 
         pickup_obj = om.get_object_by_name(self.config.task_config.pickup_obj_name)
         pickup_aabb_center, pickup_aabb_size = body_aabb(
-            model, data, pickup_obj.body_id, visual_only=False
+            model, data, pickup_obj.body_id, visible_only=False
         )
 
         for name in target_object_names:
@@ -596,7 +601,7 @@ class CuroboOpenClosePlannerPolicy(CuroboPlannerPolicy, OpenClosePlannerPolicy):
         self, obj, model, data, pickup_aabb_center: np.ndarray, pickup_aabb_size: np.ndarray
     ) -> Cuboid | None:
         """Return a cuboid for the single counter geom with the most XY overlap with the pickup object."""
-        all_geom_ids = descendant_geoms(model, obj.body_id, visual_only=False)
+        all_geom_ids = descendant_geoms(model, obj.body_id, visible_only=False)
         geom_ids = [
             g for g in all_geom_ids if model.geom_contype[g] != 0 or model.geom_conaffinity[g] != 0
         ]
@@ -641,7 +646,7 @@ class CuroboOpenClosePlannerPolicy(CuroboPlannerPolicy, OpenClosePlannerPolicy):
 
     def _create_cuboid_for_object(self, obj, model, data) -> Cuboid | None:
         try:
-            aabb_center, aabb_size = body_aabb(model, data, obj.body_id, visual_only=False)
+            aabb_center, aabb_size = body_aabb(model, data, obj.body_id, visible_only=False)
         except ValueError:
             log.debug(f"Skipping object {obj.name} (body_id={obj.body_id}) - no geoms found")
             return None

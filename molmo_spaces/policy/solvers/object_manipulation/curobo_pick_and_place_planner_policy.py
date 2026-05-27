@@ -16,7 +16,7 @@ from molmo_spaces.policy.solvers.object_manipulation.pick_and_place_planner_poli
 from molmo_spaces.tasks.pick_and_place_task import PickAndPlaceTask
 from molmo_spaces.tasks.task import BaseMujocoTask
 from molmo_spaces.utils.constants.object_constants import RECEPTACLE_TYPES_THOR
-from molmo_spaces.utils.grasp_sample import get_all_grasp_poses
+from molmo_spaces.utils.grasps import get_pickup_grasps
 from molmo_spaces.utils.mj_model_and_data_utils import body_aabb
 from molmo_spaces.utils.pose import pose_mat_to_7d
 from molmo_spaces.utils.profiler_utils import Timer
@@ -94,7 +94,9 @@ class CuroboPickAndPlacePlannerPolicy(CuroboPlannerPolicy, PickAndPlacePlannerPo
         data = self.task.env.current_data
 
         # Get all grasp poses
-        grasp_poses_world, _, object_pose = get_all_grasp_poses(self, pickup_obj)
+        grasp_poses_world = get_pickup_grasps(
+            self.task.env, pickup_obj, grasp_libraries=self.config.policy_config.grasp_libraries
+        )
 
         # Get current TCP position
         tcp_pose_arr = self.task.sensor_suite.sensors["tcp_pose"].get_observation(
@@ -109,7 +111,7 @@ class CuroboPickAndPlacePlannerPolicy(CuroboPlannerPolicy, PickAndPlacePlannerPo
         dist_tcp_o = R.from_matrix(dist_tcp[:, :3, :3]).magnitude() * 180 / np.pi
         dists_up = grasp_poses_world[:, 2, 2]
         dists_com = np.linalg.norm(
-            (np.linalg.inv(object_pose) @ grasp_poses_world)[:, :3, 3], axis=1
+            (np.linalg.inv(pickup_obj.pose) @ grasp_poses_world)[:, :3, 3], axis=1
         )
 
         dist_total = (
@@ -260,7 +262,7 @@ class CuroboPickAndPlacePlannerPolicy(CuroboPlannerPolicy, PickAndPlacePlannerPo
 
     def _create_cuboid_for_object(self, obj, model, data) -> Cuboid | None:
         try:
-            aabb_center, aabb_size = body_aabb(model, data, obj.body_id, visual_only=False)
+            aabb_center, aabb_size = body_aabb(model, data, obj.body_id, visible_only=False)
         except ValueError:
             log.debug(f"Skipping object {obj.name} (body_id={obj.body_id}) - no geoms found")
             return None

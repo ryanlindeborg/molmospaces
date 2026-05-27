@@ -648,6 +648,10 @@ class ObjectManager:
 
         return cache_in_use[oname]["structural"]
 
+    def _has_visible_geom(self, body_id: int) -> bool:
+        geom_ids = descendant_geoms(self.model, body_id, visible_only=True)
+        return len(geom_ids) > 0
+
     def is_excluded(self, object_or_name_or_id: ObjectOrNameOrIdType) -> bool:
         cache_in_use = self._model_cache
 
@@ -656,9 +660,7 @@ class ObjectManager:
         if "excluded" not in cache_in_use[oname]:
             is_excluded = (
                 self._env.config.robot_config.robot_namespace in oname
-            ) or not descendant_geoms(
-                self.model, self.get_object(object_or_name_or_id).body_id, True
-            )
+            ) or not self._has_visible_geom(self.get_object_body_id(object_or_name_or_id))
             if self._caching_enabled:
                 cache_in_use[oname]["excluded"] = is_excluded
             else:
@@ -795,7 +797,7 @@ class ObjectManager:
             List of door body names found in the scene.
         """
         door_body_names = []
-        for key, value in self.scene_metadata["objects"].items():
+        for key, value in (self.scene_metadata or {}).get("objects", {}).items():
             if "doorway" in key:
                 name_map = value.get("name_map", {})
                 bodies = name_map.get("bodies", {})
@@ -1074,11 +1076,15 @@ class ObjectManager:
             try:
                 img.append(ObjectMeta.img_features(asset_id))
                 kept_asset_ids.append(asset_id)
-            except ValueError:
+            except KeyError:
                 log.warning(f"No image features for {asset_id}, ignoring.")
 
         if name_to_uid[target_name] not in kept_asset_ids:
-            raise ValueError(f"Missing asset id {name_to_uid[target_name]} from {target_name}")
+            log.warning(
+                f"Could not get image features for {target_name}, using dummy description scores."
+            )
+            names = self.get_natural_object_names(object_or_name_or_id, [])
+            return [(1.0, 1.0, name) for name in names]
 
         img = np.concatenate(img, axis=0)
         asset_ids = kept_asset_ids
@@ -1540,6 +1546,8 @@ class ObjectManager:
         contactless_object_names = set()
         seen_poly_z = set()
 
+        meta_objs = (self.scene_metadata or {}).get("objects", {})
+
         # Fallback: list with objects with aabbs overlapping >= 50% in xy with the bench and "just above" in z
         for geom_id in bench_geom_ids:
             # Take full body
@@ -1574,7 +1582,7 @@ class ObjectManager:
 
                 if object_name in object_names:
                     continue
-                if object_name not in self.scene_metadata.get("objects", {}):
+                if object_name not in meta_objs:
                     continue
                 if object_name in contactless_object_names:
                     continue

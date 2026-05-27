@@ -1,11 +1,17 @@
 import gzip
 import json
+from pathlib import Path
 import pickle
 from typing import TYPE_CHECKING
+from collections.abc import Mapping
+from functools import cache, lru_cache
+from itertools import chain
 
 import numpy as np
 from filelock import FileLock
 from tqdm import tqdm
+
+from molmo_spaces.utils.lazy_loading_utils import UserAssetLibraryIndexEntry, get_user_library_index
 
 try:
     import open_clip
@@ -17,6 +23,7 @@ from molmospaces_resources import PickleLMDBMap
 from molmo_spaces.molmo_spaces_constants import (
     ASSETS_DIR,
     DATA_TYPE_TO_SOURCE_TO_VERSION,
+    USER_ASSET_LIBRARIES,
     get_resource_manager,
 )
 
@@ -64,6 +71,96 @@ def get_clip_model():
     return _CLIP
 
 
+class UserLibraryMetadata(Mapping):
+    """
+    Class which provides dict-like access to a user library metadata.
+    """
+
+    def __init__(
+        self,
+        user_library_path: Path,
+        user_library_index: dict[str, UserAssetLibraryIndexEntry],
+        lru_cache_size: int = 1000,
+    ):
+        self._user_library_path = user_library_path
+        self._user_library_index = user_library_index
+
+        @lru_cache(maxsize=lru_cache_size)
+        def _get(key):
+            metadata_entry = self._user_library_index[key]
+            metadata_rel_path = metadata_entry.metadata_path
+            with open(self._user_library_path / metadata_rel_path, "r") as f:
+                metadata: dict = json.load(f)
+
+            if metadata_entry.metadata_npz_path is not None:
+                metadata_npz = np.load(self._user_library_path / metadata_entry.metadata_npz_path)
+
+                for npz_key, npz_value in metadata_npz.items():
+                    d = metadata
+                    key_parts = npz_key.split("/")
+                    for k_part in key_parts[:-1]:
+                        d = d.setdefault(k_part, {})
+                    k = key_parts[-1]
+                    assert k not in d, (
+                        f"Key {npz_key} from npz metadata already exists in metadata for uid={key}"
+                    )
+                    d[k] = npz_value
+
+            return metadata
+
+        self._get = _get
+
+    def __contains__(self, key):
+        return key in self._user_library_index
+
+    def __getitem__(self, key):
+        return self._get(key)
+
+    def __len__(self):
+        return len(self._user_library_index)
+
+    def __iter__(self):
+        return iter(self._user_library_index)
+
+
+class DictUnion(Mapping):
+    """
+    Union of multiple nonoverlapping dictionaries.
+    This will not check for key collisions between dictionaries!
+
+    Args:
+        *dicts: The dictionaries to union.
+        raise_on_missing: Whether to raise an error if a key is not found in any of the dictionaries.
+    """
+
+    def __init__(self, *dicts, raise_on_missing: bool = False):
+        self._dicts = list(dicts)
+        self._raise_on_missing = raise_on_missing
+
+    def __contains__(self, key):
+        return any(key in d for d in self._dicts)
+
+    def get(self, key, default=None):
+        for d in self._dicts:
+            if key in d:
+                return d[key]
+        return default
+
+    def __getitem__(self, key):
+        for d in self._dicts:
+            if key in d:
+                return d[key]
+        if self._raise_on_missing:
+            raise KeyError(f"Key {key} not found in any of the dictionaries")
+        return None
+
+    def __len__(self):
+        return sum(len(d) for d in self._dicts)
+
+    def __iter__(self):
+        return chain.from_iterable(self._dicts)
+
+
 def get_db():
     global _DB
 
@@ -100,7 +197,15 @@ def get_db():
 
         _DB = PickleLMDBMap(lmb_dir)
 
-    return _DB
+    dicts = [_DB]
+    for user_library_dir in USER_ASSET_LIBRARIES.values():
+        dicts.append(_get_user_library_metadata(user_library_dir))
+    return DictUnion(*dicts)
+
+
+@cache
+def _get_user_library_metadata(user_library_path: Path) -> "UserLibraryMetadata":
+    return UserLibraryMetadata(user_library_path, get_user_library_index(user_library_path))
 
 
 def compute_text_clip(text_list: str | list[str] | list[list[str]]):
@@ -156,7 +261,7 @@ class ObjectMeta:
         return list(get_db().keys())
 
     @staticmethod
-    def annotation(asset_ids: str | list[str] | None = None) -> list[str]:
+    def annotation(asset_ids: str | list[str] | None = None) -> list[dict | None] | dict | None:
         container = get_db()
 
         if asset_ids is None:
@@ -236,10 +341,10 @@ class ObjectMeta:
         if isinstance(asset_ids, str):
             if asset_ids in db:
                 return np.array([db[asset_ids][feature_type_str]])
-            raise ValueError(f"Missing {asset_ids} for {feature_type_str}")
+            raise KeyError(f"Missing {asset_ids} for {feature_type_str}")
 
         if any(asset_id not in db for asset_id in asset_ids):
-            raise ValueError(f"Missing some of {len(asset_ids)} asset_ids for {feature_type_str}")
+            raise KeyError(f"Missing some of {len(asset_ids)} asset_ids for {feature_type_str}")
 
         return np.stack([db[asset_id][feature_type_str] for asset_id in asset_ids], axis=0)
 

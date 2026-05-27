@@ -49,6 +49,7 @@ class BaseMujocoTaskSamplerConfig(Config):
 
     # Scene configuration
     enable_texture_randomization: bool = False
+    house_variant: str = "ceiling"
 
 
 class ObjectCentricTaskSamplerConfig(BaseMujocoTaskSamplerConfig):
@@ -69,6 +70,10 @@ class ObjectCentricTaskSamplerConfig(BaseMujocoTaskSamplerConfig):
     # final distributions of samples. (Roughly 20% objaverse assets in data)
     objaverse_oversampling_factor: int = 30
 
+    filter_for_grasps: bool = True  # only sample objects with valid grasp files
+    # grasp libraries to use for filtering, if None all available libraries will be used
+    grasp_libraries: list[str] | None = None
+
 
 class PickTaskSamplerConfig(ObjectCentricTaskSamplerConfig):
     """Configuration for Franka move-to-pose task sampler."""
@@ -86,7 +91,7 @@ class PickTaskSamplerConfig(ObjectCentricTaskSamplerConfig):
     max_robot_to_obj_dist: float = 0.6
 
     # House iteration configuration
-    house_inds: list[int] = list(range(0, 4))  # order of house indices to iterate over
+    house_inds: list[int] | None = list(range(0, 4))  # order of house indices to iterate over
     samples_per_house: int = 2  # number of tasks to sample per house before advancing
     max_tasks: float = math.inf  # total tasks to sample; inf means unbounded
 
@@ -181,6 +186,7 @@ class OpenTaskSamplerConfig(PickTaskSamplerConfig):
     target_initial_state_open_percentage: float = (
         0  # Percentage of the target joint at start to open or close the joint
     )
+    grasp_libraries: list[str] | None = ["droid"]  # only thor provides articulated grasps
 
 
 class RUMPickTaskSamplerConfig(PickTaskSamplerConfig):
@@ -240,7 +246,7 @@ class DoorOpeningTaskSamplerConfig(BaseMujocoTaskSamplerConfig):
     random_seed: int | None = None  # Random seed for deterministic task sampling
 
     # House iteration configuration
-    house_inds: list[int] = list(
+    house_inds: list[int] | None = list(
         range(0, 22)
     )  # List of thor house indices to iterate through (first 20 for demo)
     scene_xml_paths: list[str] | None = None
@@ -293,9 +299,9 @@ class NavToObjTaskSamplerConfig(ObjectCentricTaskSamplerConfig):
     )
     task_batch_size: int = 1
 
-    house_inds: list[
-        int
-    ] = []  # list(range(0, 20))  # List of thor house indices to iterate through (first 20 for demo)
+    house_inds: (
+        list[int] | None
+    ) = []  # list(range(0, 20))  # List of thor house indices to iterate through (first 20 for demo)
     samples_per_house: int = 1  # Number of tasks per house
     max_tasks: float = math.inf  # total tasks to sample; inf means unbounded
 

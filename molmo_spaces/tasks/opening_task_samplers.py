@@ -16,7 +16,7 @@ from molmo_spaces.tasks.task_sampler_errors import HouseInvalidForTask
 from molmo_spaces.utils.constants.object_constants import (
     EXTENDED_ARTICULATION_TYPES_THOR,
 )
-from molmo_spaces.utils.grasp_sample import has_joint_grasp_file
+from molmo_spaces.utils.grasps import has_joint_grasp_path
 from molmo_spaces.utils.pose import pose_mat_to_7d
 from molmo_spaces.utils.scene_maps import ProcTHORMap
 
@@ -32,7 +32,8 @@ class OpenTaskSampler(PickTaskSampler):
             config.task_sampler_config.pickup_types = EXTENDED_ARTICULATION_TYPES_THOR
         super().__init__(config)
 
-    def has_valid_grasp_file(self, pickup_obj, asset_uid):
+    def _has_grasps(self, pickup_obj: MlSpacesObject, asset_uid: str):
+        assert isinstance(pickup_obj, MlSpacesArticulationObject)
         for joint_name in pickup_obj.joint_names:
             thor_joint_name = (
                 self.env.current_scene_metadata.get("objects", {})
@@ -41,9 +42,14 @@ class OpenTaskSampler(PickTaskSampler):
                 .get("joints", {})
                 .get(joint_name, None)
             )
-            if has_joint_grasp_file(asset_uid, thor_joint_name):
+            if has_joint_grasp_path(
+                asset_uid,
+                thor_joint_name,
+                grasp_libraries=self.config.task_sampler_config.grasp_libraries,
+            ):
                 return True
 
+        log.info(f"Skipping {pickup_obj.name} (uid={asset_uid}) - no grasp file available")
         return False
 
     def _sample_task(self, env: CPUMujocoEnv, skip_robot_placement: bool = False) -> OpeningTask:
@@ -144,7 +150,11 @@ class OpenTaskSampler(PickTaskSampler):
                 .get("joints", {})
                 .get(joint_name, None)
             )
-            if has_joint_grasp_file(thor_object_name, thor_joint_name):
+            if has_joint_grasp_path(
+                thor_object_name,
+                thor_joint_name,
+                grasp_libraries=self.config.task_sampler_config.grasp_libraries,
+            ):
                 joint_names_with_grasp_file.append(joint_name)
         if len(joint_names_with_grasp_file) == 0:
             raise ValueError(f"No joints with grasp file found for {pickup_obj.name}")

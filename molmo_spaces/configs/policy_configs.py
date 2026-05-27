@@ -90,6 +90,10 @@ class ObjectManipulationPlannerPolicyConfig(BasePolicyConfig):
     grasp_feasibility_batch_size: int = 256
     grasp_feasibility_max_grasps: int = 256
 
+    # which grasp libraries to use, in descending priority (will be filtered by availability for each asset)
+    # if None, all available libraries for the object will be used
+    grasp_libraries: list[str] | None = None
+
     # Debugging
     debug_poses: bool = False  # Enable debug printing for poses
     verbose: bool = True  # Enable verbose output for debugging
@@ -112,6 +116,8 @@ class OpenClosePlannerPolicyConfig(ObjectManipulationPlannerPolicyConfig):
     speed_slow: float = 0.04  # m/s for precise movements
     speed_fast: float = 0.08  # m/s for transport movements
     move_settle_time: float = 0.2  # seconds
+
+    grasp_libraries: list[str] | None = ["droid"]  # only thor provides articulated grasps
 
     def model_post_init(self, __context) -> None:
         """Set policy_cls after initialization to avoid circular imports."""
