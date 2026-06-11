@@ -241,6 +241,12 @@ class JsonEvalTaskSampler(BaseMujocoTaskSampler):
             # No eval system — use recorded cameras as-is
             exp_config.camera_config = self._recorded_camera_config
 
+        # Override depth if the policy requires it
+        if exp_config.policy_config.force_enable_depth:
+            log.info("Force enabling depth for all cameras")
+            for camera in exp_config.camera_config.cameras:
+                camera.record_depth = True
+
         # Override exp_config.task_type to match the episode spec's task
         # The task class's judge_success() method checks config.task_type, so it must match.
         exp_config.task_type = self._infer_task_type(episode_spec)
@@ -255,6 +261,10 @@ class JsonEvalTaskSampler(BaseMujocoTaskSampler):
         # TODO(RMH): Add input arg for noise level (high, low, medium) to support noisy eval
         if exp_config.robot_config.action_noise_config is not None:
             exp_config.robot_config.action_noise_config.enabled = False
+
+        # Apply robot-specific evaluation overrides. This is a little hacky, so use sparingly.
+        if exp_config.eval_runtime_params and exp_config.eval_runtime_params.robot_override_fn:
+            exp_config.eval_runtime_params.robot_override_fn(episode_spec, exp_config)
 
         super().__init__(exp_config)
 

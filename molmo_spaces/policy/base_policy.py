@@ -31,6 +31,13 @@ class BasePolicy(ABC):
         self.config = config
         self.task = task
 
+        if self.config.policy_config.force_enable_depth:
+            for camera in self.config.camera_config.cameras:
+                if not camera.record_depth:
+                    raise ValueError(
+                        f"Camera {camera.name} must record depth when force_enable_depth is True"
+                    )
+
     @abstractmethod
     def reset(self):
         """
@@ -93,9 +100,11 @@ class BasePolicy(ABC):
         return {"unknown": 0}
 
 
-# Intended signature: Callable[[MlSpacesExpConfig, BaseMujocoTask | None], BasePolicy].
-# Relaxed to Callable[..., BasePolicy] to avoid forward-reference resolution issues with Pydantic.
 PolicyFactory: TypeAlias = Callable[..., BasePolicy]
+"""
+Factory function with signature ``Callable[[MlSpacesExpConfig, BaseMujocoTask | None], BasePolicy]``.
+To avoid forward-reference resolution issues with Pydantic, the type is relaxed to Callable[..., BasePolicy].
+"""
 
 
 class PlannerPolicy(BasePolicy):

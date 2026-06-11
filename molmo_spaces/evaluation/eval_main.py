@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 from molmo_spaces.configs.abstract_exp_config import MlSpacesExpConfig
 from molmo_spaces.configs.robot_configs import ActionNoiseConfig
 from molmo_spaces.data_generation.config_registry import get_config_class
+from molmo_spaces.evaluation.robot_eval_overrides import OverrideFn
 from molmo_spaces.evaluation.benchmark_schema import (
     EpisodeSpec,
     load_all_episodes,
@@ -365,6 +366,10 @@ class EvalRuntimeParams:
     add_custom_object: bool = False
     custom_object_path: str | Path | None = None
     custom_object_name: str | None = None
+    robot_override_fn: OverrideFn | None = None
+    """
+    Hook that mutates the experiment config with robot-specific overrides.
+    """
 
 
 def create_eval_config(
@@ -476,8 +481,8 @@ def run_evaluation(
         preloaded_policy: Optional pre-initialized policy instance. If provided, skips
             policy creation from config.
         max_episodes: Maximum number of episodes to evaluate from benchmark. If None, evaluates all episodes.
-        camera_config_override: Optional camera system config (e.g. FrankaEvalCameraSystem) to
-            replace the default camera_config on the experiment config.
+        camera_config_override: Optional camera system config (of type FrankaEvalCameraSystem) to
+            replace the default camera_config on the experiment config. Other types are ignored.
         camera_names_override: Optional list of camera names to override
             policy_config.camera_names (e.g. ["randomized_zed2_analogue_1", "wrist_camera"]).
         episode_idx: Index of a specific episode to evaluate. If None, evaluates all episodes.
